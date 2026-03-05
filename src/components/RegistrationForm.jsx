@@ -1,6 +1,8 @@
+import { Link } from "react-router-dom";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+
 
 
 function RegistrationForm() {
@@ -367,9 +369,9 @@ function RegistrationForm() {
           </button>
           <p className="text-xs text-gray-500 text-center mt-4">
   By submitting, you agree to our{" "}
-  <span className="underline cursor-pointer hover:text-gray-700">
-    Terms of Service
-  </span>{" "}
+ <Link to="/terms" className="text-red-600 underline">
+  Terms of Service
+</Link>{" "}
   and{" "}
   <span className="underline cursor-pointer hover:text-gray-700">
     Privacy Policy
