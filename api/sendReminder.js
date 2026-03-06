@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   try {
     // Calculate 24 hours ago
     const twentyFourHoursAgo = new Date(
-      Date.now() - 24 * 60 * 60 * 1000
+      Date.now() - 1 * 60 * 1000
     ).toISOString();
 
     // Get users who:
