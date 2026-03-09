@@ -7,6 +7,20 @@ import Footer from "../components/Footer";
 function Merch() {
   const [cart, setCart] = useState([]);
   const [openCart, setOpenCart] = useState(false);
+  const [checkout, setCheckout] = useState({
+    customer_name: "",
+    customer_phone: "",
+    customer_email: "",
+    notes: "",
+  });
+  const [ordering, setOrdering] = useState(false);
+  const [orderError, setOrderError] = useState("");
+
+  const parseNaira = (value) => {
+    if (typeof value !== "string") return 0;
+    const numeric = Number(value.replace(/[^0-9.]/g, ""));
+    return Number.isFinite(numeric) ? numeric : 0;
+  };
 
   const addToCart = (item) => {
   setCart((prev) => {
@@ -31,10 +45,60 @@ function Merch() {
  
 
   const subtotal = cart.reduce(
-  (sum, item) =>
-    sum + Number(item.price.replace(/[₦,]/g, "")) * item.qty,
-  0
-);
+    (sum, item) => sum + parseNaira(item.price) * item.qty,
+    0
+  );
+
+  const handleCheckoutChange = (e) => {
+    setCheckout((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const submitOrder = async () => {
+    setOrdering(true);
+    setOrderError("");
+
+    try {
+      const response = await fetch("/api/orders/merch", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+        },
+        body: JSON.stringify({
+          customer_name: checkout.customer_name,
+          customer_phone: checkout.customer_phone,
+          customer_email: checkout.customer_email || undefined,
+          notes: checkout.notes || undefined,
+          currency: "NGN",
+          items: cart.map((item) => ({
+            name: item.name,
+            quantity: item.qty,
+            unit_price: parseNaira(item.price),
+          })),
+        }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail =
+          Array.isArray(payload.details) && payload.details.length
+            ? payload.details[0].message || payload.details[0].field
+            : null;
+        throw new Error(detail || payload.error || "Failed to create order");
+      }
+
+      if (payload?.whatsapp_url) {
+        window.open(payload.whatsapp_url, "_blank", "noopener,noreferrer");
+      }
+
+      setCart([]);
+      setOpenCart(false);
+      setCheckout({ customer_name: "", customer_phone: "", customer_email: "", notes: "" });
+    } catch (err) {
+      setOrderError(err.message || "Failed to create order");
+    } finally {
+      setOrdering(false);
+    }
+  };
 
 
   return (
@@ -136,12 +200,43 @@ function Merch() {
 
       {/* WhatsApp */}
       <div className="mt-6 bg-green-50 p-4 rounded-lg text-sm">
-        <p className="font-medium text-green-700">
-          Order via WhatsApp
-        </p>
+        <p className="font-medium text-green-700">Order via WhatsApp</p>
         <p className="text-green-600 text-xs mt-1">
           Click below to send your order details via WhatsApp. We’ll confirm your order and share payment information.
         </p>
+      </div>
+
+      {/* Checkout */}
+      <div className="mt-4 space-y-3">
+        <input
+          name="customer_name"
+          value={checkout.customer_name}
+          onChange={handleCheckoutChange}
+          className="input"
+          placeholder="Full name"
+        />
+        <input
+          name="customer_phone"
+          value={checkout.customer_phone}
+          onChange={handleCheckoutChange}
+          className="input"
+          placeholder="WhatsApp number"
+        />
+        <input
+          name="customer_email"
+          value={checkout.customer_email}
+          onChange={handleCheckoutChange}
+          className="input"
+          placeholder="Email (optional)"
+        />
+        <textarea
+          name="notes"
+          value={checkout.notes}
+          onChange={handleCheckoutChange}
+          className="input min-h-[90px]"
+          placeholder="Notes (optional)"
+        />
+        {orderError ? <p className="text-xs text-red-600">{orderError}</p> : null}
       </div>
 
       {/* Actions */}
@@ -153,13 +248,13 @@ function Merch() {
           Continue Shopping
         </button>
 
-        <a
-          href="https://wa.me/2349162682043"
-          target="_blank"
-          className="flex-1 rounded-lg bg-red-600 py-3 text-sm font-semibold text-white text-center hover:bg-red-700 transition"
+        <button
+          onClick={submitOrder}
+          disabled={ordering || cart.length === 0}
+          className="flex-1 rounded-lg bg-red-600 py-3 text-sm font-semibold text-white text-center hover:bg-red-700 transition disabled:opacity-50"
         >
-          Order on WhatsApp
-        </a>
+          {ordering ? "Creating Order..." : "Order on WhatsApp"}
+        </button>
       </div>
 
     </div>

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useEffect, useState } from "react";
+import useSlots from "../hooks/useSlots";
 import {
   Layers,
   Users,
@@ -92,13 +92,7 @@ function TimelineItem({
 
 
 function JourneyTimeline() {
-  const [slotsLeft, setSlotsLeft] = useState(15);
-
-  useEffect(() => {
-    const storedSlots = Number(localStorage.getItem("slotsLeft")) || 15;
-    setSlotsLeft(storedSlots);
-  }, []);
-
+  const { slotsLeft, errorMessage } = useSlots(15);
   return (
     <section className="bg-white py-24 px-6">
 
@@ -109,6 +103,11 @@ function JourneyTimeline() {
           <span className="bg-red-100 text-red-600 text-xs font-semibold px-4 py-1 rounded-full mb-3">
   ⏱ Only {slotsLeft} Slots Left
 </span>
+
+          {errorMessage ? (
+            <p className="text-xs text-gray-500 -mt-2 mb-3">{errorMessage}</p>
+          ) : null}
+
 
           <span className="bg-gray-100 text-gray-700 text-xs font-medium px-4 py-1 rounded-full">
             8-Week Intensive Program
