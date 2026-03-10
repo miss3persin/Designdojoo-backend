@@ -5,6 +5,7 @@ import healthHandler from "../api/health.js";
 import slotsHandler from "../api/slots.js";
 import submitHandler from "../api/applications/submit.js";
 import merchHandler from "../api/orders/merch.js";
+import sendReminderHandler from "../api/sendReminder.js";
 
 const PORT = Number(process.env.API_DEV_PORT || 3001);
 
@@ -13,6 +14,7 @@ const routes = new Map([
   ["/api/slots", slotsHandler],
   ["/api/applications/submit", submitHandler],
   ["/api/orders/merch", merchHandler],
+  ["/api/sendReminder", sendReminderHandler],
 ]);
 
 function readBody(req) {

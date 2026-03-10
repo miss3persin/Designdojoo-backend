@@ -17,6 +17,10 @@ This project now includes a backend layer implemented as Vercel serverless API r
   - Validates and stores merch orders.
   - Applies per-IP rate limiting.
   - Returns a prefilled WhatsApp checkout URL.
+- `POST /api/sendReminder`
+  - Sends reminder emails to registrations that have not been emailed.
+  - Requires `x-api-key` header matching `REMINDER_ADMIN_API_KEY`.
+  - Uses Resend and updates `registrations.email_sent` / `email_sent_at`.
 
 ## Required Environment Variables
 
@@ -31,6 +35,12 @@ Use `.env.backend.example` as a template:
 - `MERCH_RATE_LIMIT`
 - `MERCH_RATE_WINDOW_MINUTES`
 - `MERCH_WHATSAPP_NUMBER`
+- `RESEND_API_KEY`
+- `REMINDER_ADMIN_API_KEY`
+- `REMINDER_EMAIL_FROM`
+- `REMINDER_EMAIL_SUBJECT`
+- `REMINDER_CUTOFF_HOURS`
+- `REMINDER_LIMIT`
 
 ## Local Environment
 
@@ -50,6 +60,7 @@ The frontend `.env` file is not required for backend execution.
 Run the SQL migration:
 
 - `supabase/migrations/20260308123000_backend_core.sql`
+- `supabase/migrations/20260310143000_create_registrations.sql`
 
 It creates:
 
@@ -57,6 +68,7 @@ It creates:
 - `applications` (with backend metadata columns)
 - `api_request_log`
 - `merch_orders`
+- `registrations`
 - `submit_application_with_slot(...)` RPC for atomic create + slot decrement
 
 ## Push Migration to Remote
