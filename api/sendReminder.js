@@ -15,6 +15,7 @@ const REMINDER_SUBJECT =
   process.env.REMINDER_EMAIL_SUBJECT ||
   "It has been 24 hours since you registered";
 const DEFAULT_CUTOFF_HOURS = Number(process.env.REMINDER_CUTOFF_HOURS || 24);
+const MINIMUM_CUTOFF_HOURS = 24;
 const DEFAULT_LIMIT = Number(process.env.REMINDER_LIMIT || 100);
 
 function getRequestApiKey(req) {
@@ -60,17 +61,19 @@ export default async function handler(req, res) {
   }
 
   const cutoffHours = resolveNumber(payload.cutoff_hours, DEFAULT_CUTOFF_HOURS, 1, 168);
+  const normalizedCutoffHours = Math.max(cutoffHours, MINIMUM_CUTOFF_HOURS);
   const limit = resolveNumber(payload.limit, DEFAULT_LIMIT, 1, 500);
-  const cutoffIso = new Date(Date.now() - cutoffHours * 60 * 60 * 1000).toISOString();
+  const cutoffIso = new Date(
+    Date.now() - normalizedCutoffHours * 60 * 60 * 1000
+  ).toISOString();
 
   try {
     const supabase = getSupabaseAdmin();
     const resend = new Resend(process.env.RESEND_API_KEY);
 
-    const { data: users, error } = await supabase
-      .from("registrations")
-      .select("id, name, email, created_at")
-      .eq("email_sent", false)
+    const { data: applications, error } = await supabase
+      .from("applications")
+      .select("id, full_name, email, created_at")
       .lte("created_at", cutoffIso)
       .order("created_at", { ascending: true })
       .limit(limit);
@@ -80,37 +83,164 @@ export default async function handler(req, res) {
       return;
     }
 
-    if (!users || users.length === 0) {
-      sendJson(res, 200, { ok: true, message: "No emails to send", count: 0 });
+    if (!applications || applications.length === 0) {
+      sendJson(res, 200, {
+        ok: true,
+        message: "No applications eligible for reminders yet",
+        attempted: 0,
+        sent: 0,
+        failed: 0,
+        failures: [],
+      });
+      return;
+    }
+
+    const emails = applications
+      .map((application) => application.email)
+      .filter(Boolean);
+    let registeredSet = new Set();
+
+    if (emails.length > 0) {
+      const { data: registered, error: registrationError } = await supabase
+        .from("registrations")
+        .select("email")
+        .in("email", emails);
+
+      if (registrationError) {
+        sendJson(res, 500, { ok: false, error: registrationError.message });
+        return;
+      }
+
+      registeredSet = new Set(
+        (registered || [])
+          .map((row) => (typeof row.email === "string" ? row.email.toLowerCase() : null))
+          .filter(Boolean)
+      );
+    }
+
+    const pendingApplications = applications.filter(
+      (application) =>
+        application.email &&
+        !registeredSet.has(String(application.email).toLowerCase())
+    );
+
+    if (pendingApplications.length === 0) {
+      sendJson(res, 200, {
+        ok: true,
+        message: "No new applications ready for reminders",
+        attempted: 0,
+        sent: 0,
+        failed: 0,
+        failures: [],
+      });
       return;
     }
 
     let sent = 0;
     let failed = 0;
     const failures = [];
+    const today = new Date().toLocaleDateString();
 
-    for (const user of users) {
+    for (const user of pendingApplications) {
+      const recipientName = user.full_name || user.name || "there";
+      const registrationName = user.full_name || user.name || user.email;
       try {
         await resend.emails.send({
           from: REMINDER_EMAIL_FROM,
           to: user.email,
           subject: REMINDER_SUBJECT,
           html: `
-            <div style="font-family: Arial, sans-serif; padding: 20px;">
-              <h2>Hello ${user.name || "there"},</h2>
-              <p>It has been 24 hours since you registered with DesignDojoo.</p>
-              <p>If you have any questions or need help moving forward, we're here to assist you.</p>
-              <p>We are excited to see what you build.</p>
-              <br/>
-              <strong>- The DesignDojoo Team</strong>
+            <div style="font-family: Arial, sans-serif; background:#f5f5f5; padding:40px;">
+              <div style="max-width:600px; margin:auto; background:#ffffff; padding:40px; border-radius:6px;">
+                <div style="text-align:center;">
+                  <img src="https://designdojoo.com/logo.svg" width="120"/>
+                  <h2 style="margin:10px 0 0 0;">DesignDojoo Institute</h2>
+                  <p style="color:#777; font-size:14px;">School of Product Design</p>
+                </div>
+
+                <p style="text-align:right; font-size:14px; color:#777;">
+                  ${today}
+                </p>
+
+                <p>Dear <strong>${recipientName}</strong>,</p>
+
+                <h3 style="text-align:center;">CONGRATULATIONS</h3>
+
+                <p>
+                  We have reviewed your application for the 
+                  <strong>DesignDojoo 8-Week Product Experience Track.</strong>
+                </p>
+
+                <p>
+                  Your answers stood out to our review team. Because you showed
+                  a clear readiness to learn and execute, we have decided to
+                  select you for this cohort.
+                </p>
+
+                <p><strong>Scholarship Decision: APPROVED</strong></p>
+
+                <p>
+                  Congratulations! You’ve been selected from a handful of people.
+                  Over 2000+ people applied, and you’ve been chosen as part of the
+                  select group because your answer stood out to us.
+                </p>
+
+                <p>
+                  As part of our mission to accelerate serious talent,
+                  we have waived <strong>50% of your tuition fee.</strong>
+                </p>
+
+                <div style="text-align:center; margin:30px 0;">
+                  <a href="https://designdojoo.com/sales"
+                    style="
+                      background:#e50914;
+                      color:#ffffff;
+                      padding:14px 28px;
+                      text-decoration:none;
+                      font-weight:bold;
+                      display:inline-block;
+                      border-radius:4px;">
+                    Pay Expected Fee
+                  </a>
+                </div>
+
+                <p>
+                  <strong>Secure Your Seat:</strong> Since we have limited spots for
+                  this cohort, this scholarship offer is valid for
+                  <strong>72 hours.</strong>
+                </p>
+
+                <p>
+                  Congratulations on being selected. We are ready to build
+                  your portfolio.
+                </p>
+
+                <p>Best regards,</p>
+
+                <br/>
+
+                <p><strong>Mr. A O. Samuel</strong><br/>
+                DesignDojoo’s Director</p>
+
+                <br/>
+
+                <p style="font-size:12px; color:#999;">
+                  Design Dojo Institute • Lagos, Nigeria<br/>
+                  Admission ID: #DD-2024-892
+                </p>
+              </div>
             </div>
           `,
         });
 
         await supabase
           .from("registrations")
-          .update({ email_sent: true, email_sent_at: new Date().toISOString() })
-          .eq("id", user.id);
+          .insert({
+            name: registrationName,
+            email: user.email,
+            email_sent: true,
+            email_sent_at: new Date().toISOString(),
+          });
 
         sent += 1;
       } catch (sendError) {
@@ -126,11 +256,12 @@ export default async function handler(req, res) {
     sendJson(res, 200, {
       ok: true,
       message: "Reminder run completed",
-      attempted: users.length,
+      attempted: pendingApplications.length,
       sent,
       failed,
       failures,
     });
+
   } catch (err) {
     sendJson(res, 500, { ok: false, error: err.message });
   }
