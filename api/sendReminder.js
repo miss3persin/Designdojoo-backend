@@ -9,11 +9,14 @@ import {
 import { getSupabaseAdmin } from "./_lib/supabaseAdmin.js";
 
 const REMINDER_ADMIN_API_KEY = process.env.REMINDER_ADMIN_API_KEY || "";
+
 const REMINDER_EMAIL_FROM =
-  process.env.REMINDER_EMAIL_FROM || "DesignDojoo <noreply@designdojoo.com>";
+  process.env.REMINDER_EMAIL_FROM || "DesignDojoo <onboarding@resend.dev>";
+
 const REMINDER_SUBJECT =
   process.env.REMINDER_EMAIL_SUBJECT ||
   "It has been 24 hours since you registered";
+
 const DEFAULT_CUTOFF_HOURS = Number(process.env.REMINDER_CUTOFF_HOURS || 24);
 const MINIMUM_CUTOFF_HOURS = 24;
 const DEFAULT_LIMIT = Number(process.env.REMINDER_LIMIT || 100);
@@ -31,10 +34,13 @@ function resolveNumber(value, fallback, min, max) {
   return Math.min(Math.max(parsed, min), max);
 }
 
+function isValidEmail(email) {
+  return typeof email === "string" && email.includes("@");
+}
+
 export default async function handler(req, res) {
-  if (handleCorsPreflight(req, res)) {
-    return;
-  }
+  if (handleCorsPreflight(req, res)) return;
+
   setCorsHeaders(req, res);
 
   if (req.method !== "POST") {
@@ -53,6 +59,7 @@ export default async function handler(req, res) {
   }
 
   let payload = {};
+
   try {
     payload = readJsonBody(req);
   } catch {
@@ -63,6 +70,7 @@ export default async function handler(req, res) {
   const cutoffHours = resolveNumber(payload.cutoff_hours, DEFAULT_CUTOFF_HOURS, 1, 168);
   const normalizedCutoffHours = Math.max(cutoffHours, MINIMUM_CUTOFF_HOURS);
   const limit = resolveNumber(payload.limit, DEFAULT_LIMIT, 1, 500);
+
   const cutoffIso = new Date(
     Date.now() - normalizedCutoffHours * 60 * 60 * 1000
   ).toISOString();
@@ -97,7 +105,8 @@ export default async function handler(req, res) {
 
     const emails = applications
       .map((application) => application.email)
-      .filter(Boolean);
+      .filter(isValidEmail);
+
     let registeredSet = new Set();
 
     if (emails.length > 0) {
@@ -113,15 +122,17 @@ export default async function handler(req, res) {
 
       registeredSet = new Set(
         (registered || [])
-          .map((row) => (typeof row.email === "string" ? row.email.toLowerCase() : null))
+          .map((row) =>
+            typeof row.email === "string" ? row.email.toLowerCase() : null
+          )
           .filter(Boolean)
       );
     }
 
     const pendingApplications = applications.filter(
       (application) =>
-        application.email &&
-        !registeredSet.has(String(application.email).toLowerCase())
+        isValidEmail(application.email) &&
+        !registeredSet.has(application.email.toLowerCase())
     );
 
     if (pendingApplications.length === 0) {
@@ -138,14 +149,16 @@ export default async function handler(req, res) {
 
     let sent = 0;
     let failed = 0;
+
     const failures = [];
     const today = new Date().toLocaleDateString();
 
     for (const user of pendingApplications) {
-      const recipientName = user.full_name || user.name || "there";
-      const registrationName = user.full_name || user.name || user.email;
+      const recipientName = user.full_name || "there";
+      const registrationName = user.full_name || user.email;
+
       try {
-        await resend.emails.send({
+        const { data, error: resendError } = await resend.emails.send({
           from: REMINDER_EMAIL_FROM,
           to: user.email,
           subject: REMINDER_SUBJECT,
@@ -172,18 +185,11 @@ export default async function handler(req, res) {
                 </p>
 
                 <p>
-                  Your answers stood out to our review team. Because you showed
-                  a clear readiness to learn and execute, we have decided to
-                  select you for this cohort.
+                  Your answers stood out to our review team and you have been
+                  selected for this cohort.
                 </p>
 
                 <p><strong>Scholarship Decision: APPROVED</strong></p>
-
-                <p>
-                  Congratulations! You’ve been selected from a handful of people.
-                  Over 2000+ people applied, and you’ve been chosen as part of the
-                  select group because your answer stood out to us.
-                </p>
 
                 <p>
                   As part of our mission to accelerate serious talent,
@@ -205,46 +211,36 @@ export default async function handler(req, res) {
                 </div>
 
                 <p>
-                  <strong>Secure Your Seat:</strong> Since we have limited spots for
-                  this cohort, this scholarship offer is valid for
-                  <strong>72 hours.</strong>
-                </p>
-
-                <p>
-                  Congratulations on being selected. We are ready to build
-                  your portfolio.
+                  <strong>Secure Your Seat:</strong> This scholarship offer is
+                  valid for <strong>72 hours.</strong>
                 </p>
 
                 <p>Best regards,</p>
 
-                <br/>
-
                 <p><strong>Mr. A O. Samuel</strong><br/>
                 DesignDojoo’s Director</p>
 
-                <br/>
-
                 <p style="font-size:12px; color:#999;">
-                  Design Dojo Institute • Lagos, Nigeria<br/>
-                  Admission ID: #DD-2024-892
+                  Design Dojo Institute • Lagos, Nigeria
                 </p>
               </div>
             </div>
           `,
         });
 
-        await supabase
-          .from("registrations")
-          .insert({
-            name: registrationName,
-            email: user.email,
-            email_sent: true,
-            email_sent_at: new Date().toISOString(),
-          });
+        if (resendError) throw resendError;
 
-        sent += 1;
+        await supabase.from("registrations").insert({
+          name: registrationName,
+          email: user.email,
+          email_sent: true,
+          email_sent_at: new Date().toISOString(),
+        });
+
+        sent++;
       } catch (sendError) {
-        failed += 1;
+        failed++;
+
         failures.push({
           id: user.id,
           email: user.email,
@@ -261,7 +257,6 @@ export default async function handler(req, res) {
       failed,
       failures,
     });
-
   } catch (err) {
     sendJson(res, 500, { ok: false, error: err.message });
   }
