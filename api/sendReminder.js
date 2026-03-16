@@ -21,7 +21,7 @@ export default async function handler(req, res) {
     // - Haven't received the email
     // - Registered more than 24 hours ago
     const { data: users, error } = await supabase
-      .from("applications")
+      .from("registrations")
       .select("*")
       .eq("email_sent", false)
       .lte("created_at", twentyFourHoursAgo);
@@ -43,95 +43,27 @@ export default async function handler(req, res) {
         to: user.email,
         subject: "It’s Been 24 Hours Since You Registered 🎉",
         html: `
-<div style="font-family: Arial, sans-serif; background:#f5f5f5; padding:40px;">
-  
-  <div style="max-width:600px; margin:auto; background:#ffffff; padding:40px; border-radius:6px;">
-    
-    <div style="text-align:center;">
-      <img src="https://designdojoo.com/logo.svg" width="120"/>
-      <h2 style="margin:10px 0 0 0;">DesignDojoo Institute</h2>
-      <p style="color:#777; font-size:14px;">School of Product Design</p>
-    </div>
-
-    <p style="text-align:right; font-size:14px; color:#777;">
-      ${new Date().toLocaleDateString()}
-    </p>
-
-    <p>Dear <strong>${user.full_name}</strong>,</p>
-
-    <h3 style="text-align:center;">CONGRATULATIONS</h3>
-
-    <p>
-      We have reviewed your application for the 
-      <strong>DesignDojoo 8-Week Product Experience Track.</strong>
-    </p>
-
-    <p>
-      Your answers stood out to our review team. Because you showed
-      a clear readiness to learn and execute, we have decided to
-      select you for this cohort.
-    </p>
-
-    <p><strong>Scholarship Decision: APPROVED</strong></p>
-
-    <p>
-      Congratulations! You’ve been selected from a handful of people.
-      Over 2000+ people applied, and you’ve been chosen as part of the
-      select group because your answer stood out to us.
-    </p>
-
-    <p>
-      As part of our mission to accelerate serious talent,
-      we have waived <strong>50% of your tuition fee.</strong>
-    </p>
-
-    <div style="text-align:center; margin:30px 0;">
-      <a href="https://designdojoo.com/sales"
-      style="
-        background:#e50914;
-        color:#ffffff;
-        padding:14px 28px;
-        text-decoration:none;
-        font-weight:bold;
-        display:inline-block;
-        border-radius:4px;">
-        Pay Expected Fee
-      </a>
-    </div>
-
-    <p>
-      <strong>Secure Your Seat:</strong> Since we have limited spots for
-      this cohort, this scholarship offer is valid for
-      <strong>72 hours.</strong>
-    </p>
-
-    <p>
-      Congratulations on being selected. We are ready to build
-      your portfolio.
-    </p>
-
-    <p>Best regards,</p>
-
-    <br/>
-
-    <p><strong>Mr. A O. Samuel</strong><br/>
-    DesignDojoo’s Director</p>
-
-    <br/>
-
-    <p style="font-size:12px; color:#999;">
-      Design Dojo Institute • Lagos, Nigeria<br/>
-      Admission ID: #DD-2024-892
-    </p>
-
-  </div>
-</div>
-`,
+          <div style="font-family: Arial, sans-serif; padding: 20px;">
+            <h2>Hello ${user.name},</h2>
+            <p>
+              It’s been 24 hours since you registered with DesignDojoo.
+            </p>
+            <p>
+              If you have any questions or need help moving forward,
+              we're here to assist you.
+            </p>
+            <p>
+              We’re excited to see what you build.
+            </p>
+            <br/>
+            <strong>– The DesignDojoo Team</strong>
+          </div>
+        `,
       });
 
       // Mark email as sent so it doesn't resend
       await supabase
-        .from("applications")
+        .from("registrations")
         .update({ email_sent: true })
         .eq("id", user.id);
     }
