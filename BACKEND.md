@@ -55,6 +55,37 @@ The frontend `.env` file is not required for backend execution.
 
 `vite.config.js` proxies `/api/*` to `http://localhost:3001` in dev.
 
+## Cron / Scheduler Example
+
+You must call `POST /api/sendReminder` with the `x-api-key` header that matches
+`REMINDER_ADMIN_API_KEY`. Here is a simple GitHub Actions cron that runs hourly:
+
+```yaml
+name: Send Reminder Emails
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+
+jobs:
+  send-reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call reminder endpoint
+        env:
+          REMINDER_URL: https://<your-domain>/api/sendReminder
+          REMINDER_ADMIN_API_KEY: ${{ secrets.REMINDER_ADMIN_API_KEY }}
+        run: |
+          curl -X POST "$REMINDER_URL" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $REMINDER_ADMIN_API_KEY" \
+            -d '{"cutoff_hours":24,"limit":100}'
+```
+
+If you use another scheduler (cron, Render, Railway, etc.), the request shape is
+the same: `POST /api/sendReminder` with the `x-api-key` header and optional JSON
+body containing `cutoff_hours` and `limit`.
+
 ## Database Migration
 
 Run the SQL migration:

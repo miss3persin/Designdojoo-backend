@@ -9,6 +9,7 @@ import {
 import { enforceRateLimit } from "../_lib/rateLimit.js";
 import { getSupabaseAdmin } from "../_lib/supabaseAdmin.js";
 import { validateApplicationPayload } from "../_lib/validation.js";
+import sendReminderHandler from "../sendReminder.js";
 
 const APPLICATION_LIMIT = Number(process.env.APPLICATION_RATE_LIMIT || 5);
 const APPLICATION_WINDOW_MINUTES = Number(
@@ -126,6 +127,41 @@ export default async function handler(req, res) {
     }
 
     const result = Array.isArray(data) ? data[0] : data;
+
+    if (process.env.REMINDER_ADMIN_API_KEY) {
+      try {
+        const reminderReq = {
+          method: "POST",
+          headers: {
+            "x-api-key": process.env.REMINDER_ADMIN_API_KEY,
+            origin: req.headers?.origin || "",
+          },
+          body: {
+            email: submission.email,
+            application_id: result?.application_id ?? null,
+          },
+        };
+        const reminderRes = {
+          statusCode: 200,
+          headers: {},
+          setHeader(name, value) {
+            this.headers[name] = value;
+          },
+          status(code) {
+            this.statusCode = code;
+            return this;
+          },
+          end() {},
+        };
+
+        await sendReminderHandler(reminderReq, reminderRes);
+      } catch (reminderError) {
+        console.error("Immediate reminder email failed:", reminderError);
+      }
+    } else {
+      console.warn("REMINDER_ADMIN_API_KEY missing; skipping immediate email.");
+    }
+
     sendJson(res, 201, {
       ok: true,
       application_id: result?.application_id ?? null,

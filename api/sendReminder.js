@@ -1,4 +1,4 @@
-import { Resend } from "resend";
+﻿import { Resend } from "resend";
 import {
   handleCorsPreflight,
   methodNotAllowed,
@@ -15,10 +15,10 @@ const REMINDER_EMAIL_FROM =
 
 const REMINDER_SUBJECT =
   process.env.REMINDER_EMAIL_SUBJECT ||
-  "It has been 24 hours since you registered";
+  "Itâ€™s Been 24 Hours Since You Registered ";
 
-const DEFAULT_CUTOFF_HOURS = Number(process.env.REMINDER_CUTOFF_HOURS || 24);
-const MINIMUM_CUTOFF_HOURS = 24;
+const DEFAULT_CUTOFF_HOURS = Number(process.env.REMINDER_CUTOFF_HOURS || 0);
+const MINIMUM_CUTOFF_HOURS = 0;
 const DEFAULT_LIMIT = Number(process.env.REMINDER_LIMIT || 100);
 
 function getRequestApiKey(req) {
@@ -67,7 +67,21 @@ export default async function handler(req, res) {
     return;
   }
 
-  const cutoffHours = resolveNumber(payload.cutoff_hours, DEFAULT_CUTOFF_HOURS, 1, 168);
+  const directEmail =
+    typeof payload.email === "string" ? payload.email.trim() : "";
+  const directApplicationId =
+    typeof payload.application_id === "string" ||
+    typeof payload.application_id === "number"
+      ? String(payload.application_id).trim()
+      : "";
+  const isDirectRequest = Boolean(directEmail || directApplicationId);
+
+  const cutoffHours = resolveNumber(
+    payload.cutoff_hours,
+    DEFAULT_CUTOFF_HOURS,
+    0,
+    168
+  );
   const normalizedCutoffHours = Math.max(cutoffHours, MINIMUM_CUTOFF_HOURS);
   const limit = resolveNumber(payload.limit, DEFAULT_LIMIT, 1, 500);
 
@@ -79,12 +93,22 @@ export default async function handler(req, res) {
     const supabase = getSupabaseAdmin();
     const resend = new Resend(process.env.RESEND_API_KEY);
 
-    const { data: applications, error } = await supabase
+    let applicationsQuery = supabase
       .from("applications")
-      .select("id, full_name, email, created_at")
-      .lte("created_at", cutoffIso)
-      .order("created_at", { ascending: true })
-      .limit(limit);
+      .select("id, full_name, email, created_at");
+
+    if (directApplicationId) {
+      applicationsQuery = applicationsQuery.eq("id", directApplicationId);
+    } else if (directEmail) {
+      applicationsQuery = applicationsQuery.ilike("email", directEmail);
+    } else {
+      applicationsQuery = applicationsQuery
+        .lte("created_at", cutoffIso)
+        .order("created_at", { ascending: true })
+        .limit(limit);
+    }
+
+    const { data: applications, error } = await applicationsQuery;
 
     if (error) {
       sendJson(res, 500, { ok: false, error: error.message });
@@ -94,7 +118,9 @@ export default async function handler(req, res) {
     if (!applications || applications.length === 0) {
       sendJson(res, 200, {
         ok: true,
-        message: "No applications eligible for reminders yet",
+        message: isDirectRequest
+          ? "No application found for immediate email"
+          : "No applications ready for emails yet",
         attempted: 0,
         sent: 0,
         failed: 0,
@@ -138,7 +164,7 @@ export default async function handler(req, res) {
     if (pendingApplications.length === 0) {
       sendJson(res, 200, {
         ok: true,
-        message: "No new applications ready for reminders",
+        message: "No new applications ready for email",
         attempted: 0,
         sent: 0,
         failed: 0,
@@ -151,7 +177,11 @@ export default async function handler(req, res) {
     let failed = 0;
 
     const failures = [];
-    const today = new Date().toLocaleDateString();
+    const today = new Intl.DateTimeFormat("en-GB", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    }).format(new Date());
 
     for (const user of pendingApplications) {
       const recipientName = user.full_name || "there";
@@ -163,68 +193,92 @@ export default async function handler(req, res) {
           to: user.email,
           subject: REMINDER_SUBJECT,
           html: `
-            <div style="font-family: Arial, sans-serif; background:#f5f5f5; padding:40px;">
-              <div style="max-width:600px; margin:auto; background:#ffffff; padding:40px; border-radius:6px;">
-                <div style="text-align:center;">
-                  <img src="https://designdojoo.com/logo.svg" width="120"/>
-                  <h2 style="margin:10px 0 0 0;">DesignDojoo Institute</h2>
-                  <p style="color:#777; font-size:14px;">School of Product Design</p>
-                </div>
+<div style="font-family: Arial, sans-serif; background:#f5f5f5; padding:40px;">
+  
+  <div style="max-width:500px; margin:auto; background:#ffffff; padding:40px; border-radius:6px;">
+    
+    <div style="text-align:center;">
+      <img src="https://designdojoo.com/logo.svg" width="120"/>
+      <h2 style="margin:10px 0 0 0;">DesignDojoo Institute</h2>
+      <p style="color:#777; font-size:14px;">School of Product Design</p>
+    </div>
 
-                <p style="text-align:right; font-size:14px; color:#777;">
-                  ${today}
-                </p>
+    <p style="text-align:right; font-size:14px; color:#777;">
+      ${today}
+    </p>
 
-                <p>Dear <strong>${recipientName}</strong>,</p>
+    <p>Dear <strong>${recipientName}</strong>,</p>
 
-                <h3 style="text-align:center;">CONGRATULATIONS</h3>
+    <h3 style="text-align:center;">CONGRATULATIONS</h3>
 
-                <p>
-                  We have reviewed your application for the 
-                  <strong>DesignDojoo 8-Week Product Experience Track.</strong>
-                </p>
+    <p>
+      We have reviewed your application for the 
+      <strong>DesignDojoo 8-Week Product Experience Track.</strong>
+    </p>
 
-                <p>
-                  Your answers stood out to our review team and you have been
-                  selected for this cohort.
-                </p>
+    <p>
+      Your answers stood out to our review team. Because you showed
+      a clear readiness to learn and execute, we have decided to
+      select you for this cohort.
+    </p>
 
-                <p><strong>Scholarship Decision: APPROVED</strong></p>
+    <p><strong>Scholarship Decision: APPROVED</strong></p>
 
-                <p>
-                  As part of our mission to accelerate serious talent,
-                  we have waived <strong>50% of your tuition fee.</strong>
-                </p>
+    <p>
+      Congratulations! You’ve been selected from a handful of people.
+      Over 2000+ people applied, and you’ve been chosen as part of the
+      select group because your answer stood out to us.
+    </p>
 
-                <div style="text-align:center; margin:30px 0;">
-                  <a href="https://designdojoo.com/sales"
-                    style="
-                      background:#e50914;
-                      color:#ffffff;
-                      padding:14px 28px;
-                      text-decoration:none;
-                      font-weight:bold;
-                      display:inline-block;
-                      border-radius:4px;">
-                    Pay Expected Fee
-                  </a>
-                </div>
+    <p>
+      As part of our mission to accelerate serious talent,
+      we have waived <strong>50% of your tuition fee.</strong>
+    </p>
 
-                <p>
-                  <strong>Secure Your Seat:</strong> This scholarship offer is
-                  valid for <strong>72 hours.</strong>
-                </p>
+    <div style="text-align:center; margin:30px 0;">
+      <a href="https://designdojoo.com/sales"
+      style="
+        background:#e50914;
+        color:#ffffff;
+        padding:14px 28px;
+        text-decoration:none;
+        font-weight:bold;
+        display:block;
+        width:100%;
+        box-sizing:border-box;
+        text-align:center;
+        border-radius:4px;">
+        Pay Expected Fee
+      </a>
+    </div>
 
-                <p>Best regards,</p>
+    <p>
+      <strong>Secure Your Seat:</strong> Since we have limited spots for
+      this cohort, this scholarship offer is valid for
+      <strong>72 hours.</strong>
+    </p>
 
-                <p><strong>Mr. A O. Samuel</strong><br/>
-                DesignDojoo’s Director</p>
+    <p>
+      Congratulations on being selected. We are ready to build
+      your portfolio.
+    </p>
 
-                <p style="font-size:12px; color:#999;">
-                  Design Dojo Institute • Lagos, Nigeria
-                </p>
-              </div>
-            </div>
+    <p>Best regards,</p>
+
+    <br/>
+
+    <p><strong>Mr. A O. Samuel</strong><br/>
+    DesignDojoo’s Director</p>
+
+    <br/>
+
+    <p style="font-size:12px; color:#999;">
+      Design Dojo Institute • Lagos, Nigeria<br/>
+      Admission ID: #DD-2026-892
+    </p>
+
+  </div>
+</div>
           `,
         });
 
@@ -251,7 +305,7 @@ export default async function handler(req, res) {
 
     sendJson(res, 200, {
       ok: true,
-      message: "Reminder run completed",
+      message: "Email run completed",
       attempted: pendingApplications.length,
       sent,
       failed,
