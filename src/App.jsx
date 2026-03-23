@@ -5,7 +5,11 @@ import RegistrationForm from "./components/RegistrationForm";
 import ConfirmationPage from "./components/ConfirmationPage";
 import Merch from "./pages/Merch"; // ✅ FIXED
 import Terms from "./pages/Terms";
+<<<<<<< HEAD
 
+=======
+import SalesPage from "./pages/SalesPage";
+>>>>>>> 5368999 (Initial commit)
 function App() {
   return (
     <BrowserRouter>
@@ -16,6 +20,10 @@ function App() {
         <Route path="/confirmation" element={<ConfirmationPage />} />
         <Route path="/shop" element={<Merch />} /> {/* ✅ NEW */}
         <Route path="/terms" element={<Terms />} />
+<<<<<<< HEAD
+=======
+        <Route path="/sales" element={<SalesPage />} />
+>>>>>>> 5368999 (Initial commit)
       </Routes>
     </BrowserRouter>
   );
