@@ -7,6 +7,7 @@ import Merch from "./pages/Merch"; // âœ… FIXED
 import Terms from "./pages/Terms";
 import SalesPage from "./pages/SalesPage";
 
+
 function App() {
   return (
     <BrowserRouter>
@@ -18,6 +19,7 @@ function App() {
         <Route path="/shop" element={<Merch />} /> {/* âœ… NEW */}
         <Route path="/terms" element={<Terms />} />
         <Route path="/sales" element={<SalesPage />} />
+
       </Routes>
     </BrowserRouter>
   );
