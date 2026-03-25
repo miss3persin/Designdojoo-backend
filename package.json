@@ -5,9 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:api": "node --env-file=.env.backend.example server/api-dev-server.mjs",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:backend": "node --test \"api/_tests/validation.test.js\"",
+    "test:backend:env": "node --env-file=.env.backend.example --test \"api/_tests/validation.test.js\"",
+    "smoke:backend": "node --env-file=.env.backend.example --test \"api/_tests/smoke.test.js\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.97.0",

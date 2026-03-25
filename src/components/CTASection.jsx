@@ -1,28 +1,10 @@
 import { ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
+import useSlots from "../hooks/useSlots";
 
 function CTASection() {
   const navigate = useNavigate();
-
-  const [slotsLeft, setSlotsLeft] = useState(15);
-
-useEffect(() => {
-  const fetchSlots = async () => {
-    const { data, error } = await supabase
-      .from("slots")
-      .select("slots_left")
-      .eq("id", 1)
-      .single();
-
-    if (!error && data) {
-      setSlotsLeft(data.slots_left);
-    }
-  };
-
-  fetchSlots();
-}, []);
+  const { slotsLeft, errorMessage } = useSlots(15);
 
 const whatsappMessage = encodeURIComponent(
   "Hello DesignDojoo team 👋\nI'm interested in the Product Experience Scholarship and would like more details."
@@ -71,8 +53,9 @@ const whatsappMessage = encodeURIComponent(
 
         {/* Small Text */}
         <p className="text-xs text-red-100">
-          Limited spots available. Applications close soon.
+          Limited spots available — only {slotsLeft} {slotsLeft === 1 ? "slot" : "slots"} left.
         </p>
+        {errorMessage ? <p className="mt-2 text-xs text-red-100">{errorMessage}</p> : null}
       </div>
     </section>
   );

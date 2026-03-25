@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../lib/supabase";
 
 
 
@@ -40,38 +39,36 @@ function RegistrationForm() {
   try {
     console.log("FORM DATA BEING SENT:", form);
 
-    // 1️⃣ Save to Supabase
-    const { error: supabaseError } = await supabase
-      .from("applications")
-      .insert([form]);
+    const response = await fetch("/api/applications/submit", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+      },
+      body: JSON.stringify(form),
+    });
 
-    if (supabaseError) {
-      throw supabaseError;
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail = Array.isArray(payload.details) && payload.details.length
+        ? payload.details[0].message || payload.details[0].field
+        : null;
+      const detailsText = typeof payload.details === "string" ? payload.details : null;
+      throw new Error(detail || detailsText || payload.error || "Something went wrong. Please try again.");
     }
 
-    // 2️⃣ Slot reduction (local demo logic)
-    let slots = Number(localStorage.getItem("slotsLeft")) || 15;
-
-    if (slots <= 1) {
-      localStorage.setItem("slotsLeft", 15);
-    } else {
-      localStorage.setItem("slotsLeft", slots - 1);
+    if (typeof payload.slots_left === "number") {
+      localStorage.setItem("slotsLeft", String(payload.slots_left));
     }
 
-    // 3️⃣ Navigate only after success
     navigate("/confirmation");
-
   } catch (err) {
     console.error("SUBMIT ERROR:", err);
-    setError("Something went wrong. Please try again.");
+    setError(err.message ?? "Something went wrong. Please try again.");
   } finally {
     setLoading(false);
   }
 };
 
-  
-
-  
 
   return (
     <div className="min-h-screen bg-gray-100 px-4 py-12 flex justify-center">
