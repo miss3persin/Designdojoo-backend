@@ -15,11 +15,12 @@ const REMINDER_EMAIL_FROM =
 
 const REMINDER_SUBJECT =
   process.env.REMINDER_EMAIL_SUBJECT ||
-  "Itâ€™s Been 24 Hours Since You Registered ";
+  "It's Been 24 Hours Since You Registered";
 
-const DEFAULT_CUTOFF_HOURS = Number(process.env.REMINDER_CUTOFF_HOURS || 0);
-const MINIMUM_CUTOFF_HOURS = 0;
+const DEFAULT_CUTOFF_HOURS = Number(process.env.REMINDER_CUTOFF_HOURS || 24);
+const MINIMUM_CUTOFF_HOURS = 24;
 const DEFAULT_LIMIT = Number(process.env.REMINDER_LIMIT || 100);
+const CRON_SECRET = process.env.CRON_SECRET || "";
 
 function getRequestApiKey(req) {
   const raw = req.headers["x-api-key"];
@@ -38,19 +39,39 @@ function isValidEmail(email) {
   return typeof email === "string" && email.includes("@");
 }
 
+function getAuthorizationHeader(req) {
+  const raw = req.headers.authorization;
+  if (typeof raw === "string") return raw.trim();
+  if (Array.isArray(raw) && raw.length) return String(raw[0]).trim();
+  return "";
+}
+
 export default async function handler(req, res) {
   if (handleCorsPreflight(req, res)) return;
 
   setCorsHeaders(req, res);
 
-  if (req.method !== "POST") {
-    methodNotAllowed(res, ["POST", "OPTIONS"]);
+  if (req.method !== "POST" && req.method !== "GET") {
+    methodNotAllowed(res, ["GET", "POST", "OPTIONS"]);
     return;
   }
 
-  if (!REMINDER_ADMIN_API_KEY || getRequestApiKey(req) !== REMINDER_ADMIN_API_KEY) {
-    sendJson(res, 401, { ok: false, error: "Unauthorized" });
-    return;
+  const isCronTrigger = req.method === "GET";
+
+  if (isCronTrigger) {
+    const authHeader = getAuthorizationHeader(req);
+    if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
+      sendJson(res, 401, { ok: false, error: "Unauthorized" });
+      return;
+    }
+  } else {
+    if (
+      !REMINDER_ADMIN_API_KEY ||
+      getRequestApiKey(req) !== REMINDER_ADMIN_API_KEY
+    ) {
+      sendJson(res, 401, { ok: false, error: "Unauthorized" });
+      return;
+    }
   }
 
   if (!process.env.RESEND_API_KEY) {
@@ -60,26 +81,19 @@ export default async function handler(req, res) {
 
   let payload = {};
 
-  try {
-    payload = readJsonBody(req);
-  } catch {
-    sendJson(res, 400, { ok: false, error: "Invalid request body" });
-    return;
+  if (req.method === "POST") {
+    try {
+      payload = readJsonBody(req);
+    } catch {
+      sendJson(res, 400, { ok: false, error: "Invalid request body" });
+      return;
+    }
   }
-
-  const directEmail =
-    typeof payload.email === "string" ? payload.email.trim() : "";
-  const directApplicationId =
-    typeof payload.application_id === "string" ||
-    typeof payload.application_id === "number"
-      ? String(payload.application_id).trim()
-      : "";
-  const isDirectRequest = Boolean(directEmail || directApplicationId);
 
   const cutoffHours = resolveNumber(
     payload.cutoff_hours,
     DEFAULT_CUTOFF_HOURS,
-    0,
+    MINIMUM_CUTOFF_HOURS,
     168
   );
   const normalizedCutoffHours = Math.max(cutoffHours, MINIMUM_CUTOFF_HOURS);
@@ -93,22 +107,12 @@ export default async function handler(req, res) {
     const supabase = getSupabaseAdmin();
     const resend = new Resend(process.env.RESEND_API_KEY);
 
-    let applicationsQuery = supabase
+    const { data: applications, error } = await supabase
       .from("applications")
-      .select("id, full_name, email, created_at");
-
-    if (directApplicationId) {
-      applicationsQuery = applicationsQuery.eq("id", directApplicationId);
-    } else if (directEmail) {
-      applicationsQuery = applicationsQuery.ilike("email", directEmail);
-    } else {
-      applicationsQuery = applicationsQuery
-        .lte("created_at", cutoffIso)
-        .order("created_at", { ascending: true })
-        .limit(limit);
-    }
-
-    const { data: applications, error } = await applicationsQuery;
+      .select("id, full_name, email, created_at")
+      .lte("created_at", cutoffIso)
+      .order("created_at", { ascending: true })
+      .limit(limit);
 
     if (error) {
       sendJson(res, 500, { ok: false, error: error.message });
@@ -118,9 +122,7 @@ export default async function handler(req, res) {
     if (!applications || applications.length === 0) {
       sendJson(res, 200, {
         ok: true,
-        message: isDirectRequest
-          ? "No application found for immediate email"
-          : "No applications ready for emails yet",
+        message: "No applications eligible for reminders yet",
         attempted: 0,
         sent: 0,
         failed: 0,

@@ -44,7 +44,7 @@ export function setCorsHeaders(req, res) {
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Requested-With"
+    "Content-Type, Authorization, X-Requested-With, X-API-Key"
   );
   res.setHeader("Access-Control-Max-Age", "86400");
 }

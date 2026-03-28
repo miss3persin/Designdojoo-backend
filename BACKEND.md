@@ -18,8 +18,9 @@ This project now includes a backend layer implemented as Vercel serverless API r
   - Applies per-IP rate limiting.
   - Returns a prefilled WhatsApp checkout URL.
 - `POST /api/sendReminder`
-  - Sends reminder emails to registrations that have not been emailed.
-  - Requires `x-api-key` header matching `REMINDER_ADMIN_API_KEY`.
+  - Sends reminder emails to applications older than the cutoff window.
+  - `GET` (for Vercel Cron) requires `Authorization: Bearer <CRON_SECRET>`.
+  - `POST` (manual/admin trigger) requires `x-api-key` matching `REMINDER_ADMIN_API_KEY`.
   - Uses Resend and updates `registrations.email_sent` / `email_sent_at`.
 
 ## Required Environment Variables
@@ -41,6 +42,7 @@ Use `.env.backend.example` as a template:
 - `REMINDER_EMAIL_SUBJECT`
 - `REMINDER_CUTOFF_HOURS`
 - `REMINDER_LIMIT`
+- `CRON_SECRET` (required for Vercel Cron trigger auth)
 
 ## Local Environment
 
@@ -57,8 +59,38 @@ The frontend `.env` file is not required for backend execution.
 
 ## Cron / Scheduler Example
 
-You must call `POST /api/sendReminder` with the `x-api-key` header that matches
-`REMINDER_ADMIN_API_KEY`. Here is a simple GitHub Actions cron that runs hourly:
+### Vercel Cron (recommended in this project)
+
+`vercel.json` runs:
+
+- `path`: `/api/sendReminder`
+- `schedule`: `0 9 * * *` (09:00 UTC = 10:00 Africa/Lagos)
+
+To make this work in production:
+
+1. Add `CRON_SECRET` in Vercel Project Settings -> Environment Variables.
+2. Redeploy so the cron job uses the new env var.
+3. Keep `REMINDER_CUTOFF_HOURS=24` (or omit it; code defaults to 24).
+
+Vercel will call the endpoint with:
+
+- method: `GET`
+- header: `Authorization: Bearer <CRON_SECRET>`
+
+### Manual/Admin Trigger
+
+You can still trigger reminders manually with a POST request:
+
+```bash
+curl -X POST "https://<your-domain>/api/sendReminder" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: <REMINDER_ADMIN_API_KEY>" \
+  -d '{"cutoff_hours":24,"limit":100}'
+```
+
+### External Scheduler Alternative (GitHub Actions example)
+
+If you prefer an external scheduler, this runs hourly and triggers the same endpoint:
 
 ```yaml
 name: Send Reminder Emails
@@ -82,9 +114,8 @@ jobs:
             -d '{"cutoff_hours":24,"limit":100}'
 ```
 
-If you use another scheduler (cron, Render, Railway, etc.), the request shape is
-the same: `POST /api/sendReminder` with the `x-api-key` header and optional JSON
-body containing `cutoff_hours` and `limit`.
+If you use another scheduler (Render, Railway, etc.), the request shape is the
+same as manual trigger: `POST /api/sendReminder` with `x-api-key`.
 
 ## Database Migration
 
